@@ -37,7 +37,8 @@ jobs:
           LL=$(ls $GITHUB_WORKSPACE/logiclib-paper/build/libs/logiclib-paper-*.jar | grep -v sources | head -1)
           ./gradlew build --stacktrace -Plogiclib_jar="$LL"
           ls -la build/libs
-          unzip -l build/libs/deathbreakdown-paper-*.jar | grep -E "plugin.yml|lib/logiclib|core/" | head -20
+          unzip -l build/libs/deathbreakdown-paper-*.jar | grep -E "plugin.yml|core/" | head -20
+          cp "$LL" build/libs/
       - name: Upload jar
         uses: actions/upload-artifact@v4
         with:
@@ -77,6 +78,7 @@ jobs:
           mkdir -p server/plugins && cd server
           bash ../ci/get-paper.sh "${{ matrix.mc }}"
           find ../jars -name "deathbreakdown-paper-*.jar" ! -name "*-sources.jar" -exec cp {} plugins/ \;
+          find ../jars -name "logiclib-paper-*.jar" ! -name "*-sources.jar" -exec cp {} plugins/ \;   # required dependency
           ls plugins
       - name: Start server, run selftest, check the log
         env:

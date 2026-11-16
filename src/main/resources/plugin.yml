@@ -3,7 +3,8 @@ version: '${version}'
 main: com.cosmiclogic.deathbreakdown.paper.DeathBreakdownPlugin
 api-version: '1.13'
 author: CosmicLogic
-website: https://github.com/CosmicLogic0/death-breakdown
+website: https://github.com/CosmicLogic0/deathbreakdown-plugin
+depend: [LogicLib]
 description: See exactly what killed you. Every hit from your last 10 seconds, in chat or a book.
 commands:
   deathbreakdown:

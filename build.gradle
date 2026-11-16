@@ -1,6 +1,5 @@
 plugins {
     id 'java'
-    id 'com.gradleup.shadow' version '8.3.5'
 }
 
 base {
@@ -21,8 +20,8 @@ sourceSets.main.java.srcDir(file('core/src/main/java'))
 dependencies {
     // Same as LogicLib for Paper: compiled against the 1.13.2 API so one jar runs on Paper 1.12.2 ... 26.x.
     compileOnly 'com.destroystokyo.paper:paper-api:1.13.2-R0.1-SNAPSHOT'
-    // LogicLib for Paper, built into the jar (relocated) so server owners have nothing extra to install.
-    implementation files(project.property('logiclib_jar'))
+    // LogicLib for Paper is a separate, required plugin (hub rule 2026-11-16: "Requires LogicLib" + Required Dependency).
+    compileOnly files(project.property('logiclib_jar'))
 }
 
 java {
@@ -42,14 +41,3 @@ processResources {
         expand props
     }
 }
-
-shadowJar {
-    archiveClassifier = ''
-    relocate 'com.cosmiclogic.logiclib.paper', 'com.cosmiclogic.deathbreakdown.paper.lib.logiclib'
-    // LogicLib's own plugin class and plugin.yml are not needed inside this plugin.
-    exclude 'com/cosmiclogic/logiclib/paper/LogicLibPlugin*'
-}
-// The LogicLib jar has its own plugin.yml; ours must win.
-shadowJar.duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-jar.enabled = false
-build.dependsOn shadowJar
