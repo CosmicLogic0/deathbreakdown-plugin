@@ -1,0 +1,5 @@
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+// Death Breakdown for Paper. Build setup copied from logiclib-paper.
+rootProject.name = 'deathbreakdown-paper'

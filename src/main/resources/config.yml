@@ -1,0 +1,20 @@
+# Death Breakdown (Paper) settings
+
+# How many seconds before death to include (1-60)
+window-seconds: 10
+
+# Show damage in hearts (true) or health points (false)
+hearts: true
+
+# After death, post the summary line in chat with [details] (hover) and [Open recap] (book)
+chat-on-death: true
+
+# Also open the recap book automatically right after respawning
+book-on-respawn: false
+
+# Lines shown for each hit (in the hover text and the book)
+show:
+  armor: true
+  enchants: true
+  other: true
+  health-left: true

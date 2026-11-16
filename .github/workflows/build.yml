@@ -1,0 +1,89 @@
+# Builds the Paper plugin and runs the automatic tests copied from LogicLib for Paper: a real Paper server on all
+# 10 target versions, plus "/deathbreakdown selftest" (damage modifiers, chat components, recap book) on each.
+name: Build and test
+
+on:
+  push:
+    paths-ignore: ['art/**', 'docs/**', '**.md']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get LogicLib for Paper (read only)
+        uses: actions/checkout@v4
+        with:
+          repository: CosmicLogic0/logiclib-paper
+          path: logiclib-paper
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build LogicLib for Paper
+        working-directory: logiclib-paper
+        run: |
+          chmod +x gradlew
+          ./gradlew build --stacktrace
+          ls build/libs
+      - name: Core unit tests
+        run: bash ci/core-test.sh
+      - name: Build Death Breakdown (Paper)
+        run: |
+          chmod +x gradlew
+          LL=$(ls $GITHUB_WORKSPACE/logiclib-paper/build/libs/logiclib-paper-*.jar | grep -v sources | head -1)
+          ./gradlew build --stacktrace -Plogiclib_jar="$LL"
+          ls -la build/libs
+          unzip -l build/libs/deathbreakdown-paper-*.jar | grep -E "plugin.yml|lib/logiclib|core/" | head -20
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: deathbreakdown-paper-jar
+          path: build/libs/*.jar
+
+  paper-test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { mc: "1.12.2", java: 8 }
+          - { mc: "1.16.5", java: 11 }
+          - { mc: "1.18.2", java: 17 }
+          - { mc: "1.19.2", java: 17 }
+          - { mc: "1.20.1", java: 17 }
+          - { mc: "1.21.1", java: 21 }
+          - { mc: "1.21.11", java: 21 }
+          - { mc: "26.1.2", java: 25 }
+          - { mc: "26.2", java: 25 }
+          - { mc: "26.3", java: 25 }
+    name: paper-test (${{ matrix.mc }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: deathbreakdown-paper-jar
+          path: jars
+      - name: Download Paper ${{ matrix.mc }}
+        run: |
+          mkdir -p server/plugins && cd server
+          bash ../ci/get-paper.sh "${{ matrix.mc }}"
+          find ../jars -name "deathbreakdown-paper-*.jar" ! -name "*-sources.jar" -exec cp {} plugins/ \;
+          ls plugins
+      - name: Start server, run selftest, check the log
+        env:
+          CONSOLE_CMDS: "deathbreakdown selftest"
+          EXPECT_AFTER: "Death Breakdown selftest PASS"
+        run: |
+          chmod +x ci/server-test.sh
+          ci/server-test.sh server "Death Breakdown \\(Paper\\) .* running on Minecraft" -- java -Xmx1500M -jar paper.jar nogui
+          grep -E "selftest (PASS|FAIL)" server/server.log
+          test -f server/plugins/DeathBreakdown/config.yml && echo "PASS: config.yml written"

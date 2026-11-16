@@ -1,0 +1,55 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '8.3.5'
+}
+
+base {
+    archivesName = 'deathbreakdown-paper'
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'PaperMC'
+        url = 'https://repo.papermc.io/repository/maven-public/'
+    }
+}
+
+// The plain-Java core is shared with the Forge/NeoForge mod.
+sourceSets.main.java.srcDir(file('core/src/main/java'))
+
+dependencies {
+    // Same as LogicLib for Paper: compiled against the 1.13.2 API so one jar runs on Paper 1.12.2 ... 26.x.
+    compileOnly 'com.destroystokyo.paper:paper-api:1.13.2-R0.1-SNAPSHOT'
+    // LogicLib for Paper, built into the jar (relocated) so server owners have nothing extra to install.
+    implementation files(project.property('logiclib_jar'))
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    // Java 8 bytecode so 1.12.2 / 1.16.5 servers (Java 8) can load it too.
+    options.release = 8
+}
+
+processResources {
+    def props = [version: version]
+    inputs.properties props
+    filesMatching('plugin.yml') {
+        expand props
+    }
+}
+
+shadowJar {
+    archiveClassifier = ''
+    relocate 'com.cosmiclogic.logiclib.paper', 'com.cosmiclogic.deathbreakdown.paper.lib.logiclib'
+    // LogicLib's own plugin class and plugin.yml are not needed inside this plugin.
+    exclude 'com/cosmiclogic/logiclib/paper/LogicLibPlugin*'
+}
+// The LogicLib jar has its own plugin.yml; ours must win.
+shadowJar.duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+jar.enabled = false
+build.dependsOn shadowJar

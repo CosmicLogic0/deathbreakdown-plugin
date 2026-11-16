@@ -1,0 +1,19 @@
+name: DeathBreakdown
+version: '${version}'
+main: com.cosmiclogic.deathbreakdown.paper.DeathBreakdownPlugin
+api-version: '1.13'
+author: CosmicLogic
+website: https://github.com/CosmicLogic0/death-breakdown
+description: See exactly what killed you. Every hit from your last 10 seconds, in chat or a book.
+commands:
+  deathbreakdown:
+    description: Show your last death recap. /deathbreakdown [chat|book|reload]
+    usage: /<command> [chat|book|reload]
+    aliases: [db]
+permissions:
+  deathbreakdown.use:
+    description: See your own death recap
+    default: true
+  deathbreakdown.reload:
+    description: Reload config.yml
+    default: op
