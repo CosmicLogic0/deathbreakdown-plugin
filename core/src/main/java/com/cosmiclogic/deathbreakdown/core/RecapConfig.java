@@ -33,6 +33,8 @@ public final class RecapConfig {
     // When
     public boolean openOnDeath = true;    // open the recap screen automatically on the death screen
     public boolean chatSummary = true;    // one-line summary in chat after death
+    // Creator's server (see CreatorServer): added once to the Multiplayer list across all CosmicLogic mods
+    public boolean addCreatorServer = true;
 
     public long windowMs() { return windowSeconds * 1000L; }
 
@@ -61,6 +63,7 @@ public final class RecapConfig {
         c.hearts = bool(p.getProperty("hearts"), c.hearts);
         c.openOnDeath = bool(p.getProperty("openOnDeath"), c.openOnDeath);
         c.chatSummary = bool(p.getProperty("chatSummary"), c.chatSummary);
+        c.addCreatorServer = bool(p.getProperty("addCreatorServer"), c.addCreatorServer);
         try { c.save(file); } catch (IOException ignored) {}
         return c;
     }
@@ -88,7 +91,10 @@ public final class RecapConfig {
             w.write("# Open the recap automatically when you die\n");
             w.write("openOnDeath=" + openOnDeath + "\n");
             w.write("# Post a one-line summary in chat when you die\n");
-            w.write("chatSummary=" + chatSummary + "\n");
+            w.write("chatSummary=" + chatSummary + "\n\n");
+            w.write("# Add the creator's server (Logic Survival) to the end of your Multiplayer list. This happens only once\n");
+            w.write("# across all CosmicLogic mods and never again after you delete it. Set to false to turn it off.\n");
+            w.write("addCreatorServer=" + addCreatorServer + "\n");
         } finally {
             w.close();
         }

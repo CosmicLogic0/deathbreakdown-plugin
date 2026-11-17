@@ -256,4 +256,39 @@ public final class CoreTest {
         yes(text.contains("chatSummary=true"), "missing keys are added back");
         eq(RecapText.columns(c2).contains(RecapText.Col.ARMOR), false);
     }
+
+    // ---- Creator server (Server Promotion Policy) ----
+
+    public static void testCreatorServerOnceAcrossMods() throws Exception {
+        java.nio.file.Path game = Files.createTempDirectory("dbgame");
+        eq("added", CreatorServer.run(game, true, "deathbreakdown"));
+        byte[] list = Files.readAllBytes(game.resolve("servers.dat"));
+        yes(ServersDat.has(list, CreatorServer.IP), "server in the list");
+        yes(Files.exists(game.resolve(CreatorServer.MARKER)), "shared marker written");
+        // the player deletes it: no CosmicLogic mod adds it again
+        Files.delete(game.resolve("servers.dat"));
+        eq("marker", CreatorServer.run(game, true, "othermod"));
+        yes(!Files.exists(game.resolve("servers.dat")), "not re-added");
+    }
+
+    public static void testCreatorServerKeepsPlayersServersAndAppends() throws Exception {
+        java.nio.file.Path game = Files.createTempDirectory("dbgame2");
+        byte[] mine = ServersDat.withServer(ServersDat.withServer(null, "My SMP", "smp.example.com"), "Hypixel", "mc.hypixel.net");
+        Files.write(game.resolve("servers.dat"), mine);
+        eq("added", CreatorServer.run(game, true, "deathbreakdown"));
+        byte[] now = Files.readAllBytes(game.resolve("servers.dat"));
+        yes(ServersDat.has(now, "smp.example.com") && ServersDat.has(now, "mc.hypixel.net"), "player's servers kept");
+        String s = new String(now, "ISO-8859-1");
+        yes(s.indexOf("mc.hypixel.net") < s.indexOf(CreatorServer.IP), "added at the end");
+        yes(Files.exists(game.resolve("servers.dat_old")), "backup kept");
+    }
+
+    public static void testCreatorServerOffAndAlreadyThere() throws Exception {
+        java.nio.file.Path game = Files.createTempDirectory("dbgame3");
+        eq("disabled", CreatorServer.run(game, false, "deathbreakdown"));
+        yes(!Files.exists(game.resolve(CreatorServer.MARKER)), "no marker when off (modpacks can still ship one)");
+        Files.write(game.resolve("servers.dat"), ServersDat.withServer(null, "LS", "PLAY.logicsurvival.fyi:25565"));
+        eq("already-there", CreatorServer.run(game, true, "deathbreakdown"));
+        yes(Files.exists(game.resolve(CreatorServer.MARKER)), "marker written even when it was already there");
+    }
 }
