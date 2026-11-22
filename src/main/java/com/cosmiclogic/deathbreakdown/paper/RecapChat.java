@@ -96,7 +96,7 @@ final class RecapChat {
         LogicText.send(p, DeathBreakdownPlugin.PREFIX, "&fYour last " + history.size() + (history.size() == 1 ? " death" : " deaths") + " &7(click to open):");
         for (int i = 0; i < history.size(); i++) {
             Recap r = history.get(history.size() - 1 - i);
-            String line = "&7" + (i + 1) + ". &8" + RecapText.ago(r.timeMs, now) + " &f" + RecapText.summary(r, v.hearts);
+            String line = "&7" + (i + 1) + ". " + RecapText.ago(r.timeMs, now) + ": &f" + RecapText.summary(r, v.hearts);
             try {
                 TextComponent c = new TextComponent(TextComponent.fromLegacyText(LogicText.color(line)));
                 c.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/deathbreakdown show " + (i + 1)));
