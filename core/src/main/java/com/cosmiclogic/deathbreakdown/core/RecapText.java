@@ -185,6 +185,24 @@ public final class RecapText {
     /** Explains the columns under the table; split into as many lines as the screen needs. */
     public static final String LEGEND = "Armor = armor & toughness   Enchants = Protection-type   Other = Resistance, absorption, shield";
 
+    /** Measures text in pixels (the game's font). */
+    public interface Width { int of(String s); }
+
+    /**
+     * Splits the legend into lines without breaking an entry ("Other = Resistance, absorption, shield" stays whole).
+     * An entry wider than {@code max} on its own gets its own line (the caller can word-wrap it).
+     */
+    public static java.util.List<String> legendLines(Width w, int max) {
+        java.util.List<String> out = new java.util.ArrayList<String>();
+        String cur = "";
+        for (String part : LEGEND.split("   ")) {
+            String t = cur.isEmpty() ? part : cur + "   " + part;
+            if (!cur.isEmpty() && w.of(t) > max) { out.add(cur); cur = part; } else cur = t;
+        }
+        if (!cur.isEmpty()) out.add(cur);
+        return out;
+    }
+
     /** "2 min ago", "just now", for the history list. */
     public static String ago(long thenMs, long nowMs) {
         long s = Math.max(0, (nowMs - thenMs) / 1000);
