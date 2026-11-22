@@ -22,6 +22,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -40,59 +41,70 @@ public final class DeathBreakdownPlugin extends JavaPlugin implements Listener {
     /** What was wrong in config.yml on the last load (shown in the console and by /db reload). */
     final List<String> problems = new ArrayList<String>();
 
+    /** LogicLib Plugin 0.2.0 keeps a broken config.yml and warns about wrong types (LR-015). */
+    static final String NEEDS_LOGICLIB = "0.2.0";
+
     @Override
     public void onEnable() {
+        Plugin lib = Bukkit.getPluginManager().getPlugin("LogicLib");
+        String libVersion = lib == null ? "none" : lib.getDescription().getVersion();
+        if (!atLeast(libVersion, NEEDS_LOGICLIB)) {
+            getLogger().severe("Death Breakdown needs LogicLib Plugin " + NEEDS_LOGICLIB + " or newer (this server has "
+                    + libVersion + "). Get it from https://www.curseforge.com/minecraft/bukkit-plugins/logiclib-plugin");
+            Bukkit.getPluginManager().disablePlugin(this);
+            return;
+        }
         loadSettings();
         Bukkit.getPluginManager().registerEvents(this, this);
         for (Player p : Bukkit.getOnlinePlayers()) loadHistory(p.getUniqueId()); // after /reload
         getLogger().info("Death Breakdown (Paper) " + getDescription().getVersion() + " running on Minecraft "
-                + LogicVersion.current() + " (damage parts: " + PaperDamage.mode() + ")");
+                + LogicVersion.current() + " (damage parts: " + PaperDamage.mode() + ", LogicLib " + libVersion + ")");
+    }
+
+    /** True if version {@code have} (like "0.2.0" or "0.2.1-SNAPSHOT") is at least {@code need}. */
+    static boolean atLeast(String have, String need) {
+        String[] h = have.split("[^0-9]+"), n = need.split("[^0-9]+");
+        for (int i = 0; i < n.length; i++) {
+            int a = i < h.length && !h[i].isEmpty() ? Integer.parseInt(h[i]) : 0;
+            int b = n[i].isEmpty() ? 0 : Integer.parseInt(n[i]);
+            if (a != b) return a > b;
+        }
+        return true;
     }
 
     void loadSettings() {
+        // LogicLib 0.2.0+: a config.yml with a YAML mistake is kept as config.yml.broken-<date>, and values of the
+        // wrong type (window-seconds: banana) are logged; getInt/getBoolean with a default then use the default.
         FileConfiguration c = LogicConfigs.load(this);
         problems.clear();
+        problems.addAll(LogicConfigs.problems(c));
         RecapConfig v = new RecapConfig();
-        v.windowSeconds = intSetting(c, "window-seconds", 10, 1, 60);
-        v.hearts = boolSetting(c, "hearts", true);
-        v.showArmor = boolSetting(c, "show.armor", true);
-        v.showEnchants = boolSetting(c, "show.enchants", true);
-        v.showOther = boolSetting(c, "show.other", true);
-        v.showHealthLeft = boolSetting(c, "show.health-left", true);
-        v.showTip = boolSetting(c, "show-tip", true);
-        v.historySize = intSetting(c, "history-size", 5, 1, 20);
-        v.saveHistory = boolSetting(c, "save-history", true);
+        v.windowSeconds = range(c, "window-seconds", 10, 1, 60);
+        v.hearts = c.getBoolean("hearts", true);
+        v.showArmor = c.getBoolean("show.armor", true);
+        v.showEnchants = c.getBoolean("show.enchants", true);
+        v.showOther = c.getBoolean("show.other", true);
+        v.showHealthLeft = c.getBoolean("show.health-left", true);
+        v.showTip = c.getBoolean("show-tip", true);
+        v.historySize = range(c, "history-size", 5, 1, 20);
+        v.saveHistory = c.getBoolean("save-history", true);
         view = v;
         hits.setWindowMs(v.windowMs());
         hits.setHistorySize(v.historySize);
-        chatOnDeath = boolSetting(c, "chat-on-death", true);
-        bookOnRespawn = boolSetting(c, "book-on-respawn", false);
-        for (String p : problems) getLogger().warning("config.yml: " + p);
+        chatOnDeath = c.getBoolean("chat-on-death", true);
+        bookOnRespawn = c.getBoolean("book-on-respawn", false);
     }
 
-    /**
-     * Bukkit's getInt turns "banana" into 0 (which 1.0.0 then clamped to a 1-second window). Anything that isn't a
-     * number now falls back to the default, with a warning.
-     */
-    int intSetting(FileConfiguration c, String key, int def, int lo, int hi) {
-        Object raw = c.get(key);
-        if (raw == null) return def;
-        if (!(raw instanceof Number)) {
-            problems.add(key + ": '" + raw + "' isn't a number, using " + def);
-            return def;
-        }
-        int v = ((Number) raw).intValue();
+    /** A whole number kept inside lo..hi (a warning if it had to be moved). */
+    int range(FileConfiguration c, String key, int def, int lo, int hi) {
+        int v = c.getInt(key, def);
         int out = Math.max(lo, Math.min(hi, v));
-        if (out != v) problems.add(key + ": " + v + " is outside " + lo + "-" + hi + ", using " + out);
+        if (out != v) {
+            String msg = "config.yml: '" + key + "' is " + v + ", outside " + lo + "-" + hi + ". Using " + out + ".";
+            problems.add(msg);
+            getLogger().warning(msg);
+        }
         return out;
-    }
-
-    boolean boolSetting(FileConfiguration c, String key, boolean def) {
-        Object raw = c.get(key);
-        if (raw == null) return def;
-        if (raw instanceof Boolean) return (Boolean) raw;
-        problems.add(key + ": '" + raw + "' isn't true or false, using " + def);
-        return def;
     }
 
     File historyDir() { return new File(getDataFolder(), "history"); }

@@ -78,12 +78,18 @@ final class SelfTest {
 
             org.bukkit.configuration.file.YamlConfiguration bad = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(
                     new java.io.StringReader("window-seconds: banana\nhearts: maybe\nhistory-size: 999\n"));
+            bad.setDefaults(plugin.getConfig().getDefaults());
+            check(com.cosmiclogic.logiclib.paper.LogicConfigs.problems(bad).size() == 2, "LogicLib reports 2 wrong types: "
+                    + com.cosmiclogic.logiclib.paper.LogicConfigs.problems(bad));
+            check(bad.getInt("window-seconds", 10) == 10, "bad number falls back to 10");
+            check(bad.getBoolean("hearts", true), "bad true/false falls back");
+            java.util.List<String> saved = new java.util.ArrayList<String>(plugin.problems);
+            check(plugin.range(bad, "history-size", 5, 1, 20) == 20, "history-size clamped to 20");
             plugin.problems.clear();
-            check(plugin.intSetting(bad, "window-seconds", 10, 1, 60) == 10, "bad number falls back to 10");
-            check(plugin.boolSetting(bad, "hearts", true), "bad true/false falls back");
-            check(plugin.intSetting(bad, "history-size", 5, 1, 20) == 20, "clamped");
-            check(plugin.problems.size() == 3, "3 problems: " + plugin.problems);
-            plugin.problems.clear();
+            plugin.problems.addAll(saved);
+            check(DeathBreakdownPlugin.atLeast("0.2.0", "0.2.0") && DeathBreakdownPlugin.atLeast("0.10.1", "0.2.0")
+                    && DeathBreakdownPlugin.atLeast("1.0", "0.2.0") && !DeathBreakdownPlugin.atLeast("0.1.0", "0.2.0")
+                    && !DeathBreakdownPlugin.atLeast("none", "0.2.0"), "LogicLib version check");
             report.append("broken config ok; ");
 
             boolean copy = RecapChat.copyLink("x", "y", "z") != null;

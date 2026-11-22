@@ -2,7 +2,7 @@
 
 **See exactly what killed you, on a vanilla client.**
 
-> ⚠️ **Requires [LogicLib Plugin](https://www.curseforge.com/minecraft/bukkit-plugins/logiclib-plugin).** Put it in your `plugins` folder too.
+> ⚠️ **Requires [LogicLib Plugin](https://www.curseforge.com/minecraft/bukkit-plugins/logiclib-plugin) 0.2.0 or newer.** Put it in your `plugins` folder too.
 
 Your players die and all they get is "slain by Skeleton". This is the **server plugin version** of [Death Breakdown](https://www.curseforge.com/minecraft/mc-mods/death-breakdown): every death comes with a recap of the last 10 seconds, and **nobody has to install a mod**.
 
@@ -11,7 +11,7 @@ Your players die and all they get is "slain by Skeleton". This is the **server p
 🧩 **Works on vanilla clients. Nothing to install on the player's side.**
 
 ## ▶️ How to use
-1. Put **Death Breakdown Plugin** and **LogicLib Plugin** in your `plugins` folder and restart. No setup needed.
+1. Put **Death Breakdown Plugin** and **LogicLib Plugin** (0.2.0 or newer) in your `plugins` folder and restart. No setup needed.
 2. When a player dies, a one-line recap appears in their chat. They **hover [details]** for every hit, or **click [Open recap]** for the book.
 3. `/db help` lists everything; `/db history` shows their last few deaths.
 
@@ -42,7 +42,7 @@ Click **[copy]** (or `/db copy`) to put the recap on your clipboard as text, for
 `/db player <name>` shows another player's last recap (permission `deathbreakdown.others`, ops by default).
 
 ### 💾 It remembers
-Settings live in `plugins/DeathBreakdown/config.yml`: the time window, hearts or health points, chat on death, opening the book on respawn, which columns show, the tip line and how many deaths to keep. `/db reload` applies changes and tells you about any value it couldn't read.
+Settings live in `plugins/DeathBreakdown/config.yml`: the time window, hearts or health points, chat on death, opening the book on respawn, which columns show, the tip line and how many deaths to keep. `/db reload` applies changes and tells you about any value it couldn't read. If config.yml has a typo that breaks the file, it's kept as `config.yml.broken-<date>` (never thrown away) and the plugin runs on the defaults.
 
 | Command | What it does |
 |---|---|
@@ -60,7 +60,7 @@ The plugin gives the same recap in **chat and a book**. The mod adds the **recap
 
 ## 📦 Requirements
 - **Paper** (or a Paper fork): Minecraft 1.12.2, 1.16.5, 1.18.2, 1.19.2, 1.20.1, 1.21.1, 1.21.11, 26.1, 26.2 and 26.3. One jar for all of them.
-- **Requires [LogicLib Plugin](https://www.curseforge.com/minecraft/bukkit-plugins/logiclib-plugin)** (shared code for my plugins). The plugin won't start without it.
+- **Requires [LogicLib Plugin](https://www.curseforge.com/minecraft/bukkit-plugins/logiclib-plugin) 0.2.0 or newer** (shared code for my plugins). Without it, or with an older one, the plugin doesn't start and the console says what to get.
 - Server only. Players don't need anything.
 
 Source and bug reports: https://github.com/CosmicLogic0/deathbreakdown-plugin
