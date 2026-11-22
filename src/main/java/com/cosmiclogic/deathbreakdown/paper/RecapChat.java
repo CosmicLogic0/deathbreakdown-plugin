@@ -14,6 +14,7 @@ import org.bukkit.entity.Player;
 
 import java.util.List;
 
+
 /** The chat version: one summary line, [details] on hover, [Open recap] opens the book. */
 final class RecapChat {
     private RecapChat() {}
@@ -45,20 +46,66 @@ final class RecapChat {
         return b.toString();
     }
 
+    /** How many hits the hover shows; the rest are in the book. Keeps the tooltip on screen. */
+    static final int HOVER_HITS = 6;
+
     static String hoverText(Recap r, RecapConfig v) {
         StringBuilder b = new StringBuilder("&6&lDeath Breakdown\n&7").append(r.deathMessage);
-        for (Hit h : r.hits) {
-            List<String> d = RecapText.details(h, r, v.hearts);
-            b.append("\n\n").append(h.finalBlow ? "&6" : "&f").append(d.get(0));
-            for (int i = 1; i < d.size(); i++) {
-                String s = d.get(i);
-                if (!v.showArmor && s.startsWith("Armor")) continue;
-                if (!v.showEnchants && s.startsWith("Enchants")) continue;
-                if (!v.showOther && (s.startsWith("Resistance") || s.startsWith("Absorption") || s.startsWith("Shield"))) continue;
-                b.append("\n &7").append(s);
-            }
+        String tip = v.showTip ? RecapText.tip(r) : "";
+        if (!tip.isEmpty()) b.append("\n&e").append(tip);
+        boolean header = true;
+        for (String s : RecapText.hoverLines(r, v.hearts, HOVER_HITS)) {
+            if (s.isEmpty()) { header = true; continue; }
+            if (s.startsWith("(")) { b.append("\n\n&8").append(s); header = true; continue; }
+            if (header) { b.append("\n\n").append(s.startsWith("FINAL BLOW") ? "&6" : "&f").append(s); header = false; continue; }
+            if (!v.showArmor && s.startsWith("Armor")) continue;
+            if (!v.showEnchants && s.startsWith("Enchants")) continue;
+            if (!v.showOther && (s.startsWith("Resistance") || s.startsWith("Absorption") || s.startsWith("Shield"))) continue;
+            b.append("\n &7").append(s);
         }
         return LogicText.color(b.toString());
+    }
+
+    /** Copy-to-clipboard clicks exist from Minecraft 1.15; returns null on older servers. */
+    static TextComponent copyLink(String label, String hover, String text) {
+        try {
+            ClickEvent.Action copy = ClickEvent.Action.valueOf("COPY_TO_CLIPBOARD");
+            TextComponent c = new TextComponent(LogicText.color(label));
+            c.setClickEvent(new ClickEvent(copy, text));
+            c.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, TextComponent.fromLegacyText(LogicText.color(hover))));
+            return c;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    static void sendCopy(Player p, Recap r, RecapConfig v) {
+        TextComponent c = copyLink("&b[Click here to copy your last recap]", "&7Copies it as text, for Discord or a bug report",
+                RecapText.plainText(r, v.hearts));
+        if (c == null) {
+            LogicText.send(p, DeathBreakdownPlugin.PREFIX, "&7Copying needs Minecraft 1.15 or newer. Here it is as text:");
+            for (String line : RecapText.plainText(r, v.hearts).split("\n")) p.sendMessage(line);
+            return;
+        }
+        p.spigot().sendMessage(c);
+    }
+
+    /** "/db history": one clickable line per saved death, newest first. */
+    static void sendHistory(Player p, List<Recap> history, RecapConfig v) {
+        long now = System.currentTimeMillis();
+        LogicText.send(p, DeathBreakdownPlugin.PREFIX, "&fYour last " + history.size() + (history.size() == 1 ? " death" : " deaths") + " &7(click to open):");
+        for (int i = 0; i < history.size(); i++) {
+            Recap r = history.get(history.size() - 1 - i);
+            String line = "&7" + (i + 1) + ". &8" + RecapText.ago(r.timeMs, now) + " &f" + RecapText.summary(r, v.hearts);
+            try {
+                TextComponent c = new TextComponent(TextComponent.fromLegacyText(LogicText.color(line)));
+                c.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/deathbreakdown show " + (i + 1)));
+                c.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, TextComponent.fromLegacyText(LogicText.color("&7Open this recap"))));
+                p.spigot().sendMessage(c);
+            } catch (Throwable t) {
+                LogicText.send(p, line + " &8(/db show " + (i + 1) + ")");
+            }
+        }
     }
 
     static BaseComponent[] build(Recap r, RecapConfig v) {
@@ -70,6 +117,8 @@ final class RecapChat {
         open.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/deathbreakdown book"));
         open.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, TextComponent.fromLegacyText(LogicText.color("&7Open the full recap as a book"))));
         cb.append(details).append(open);
+        TextComponent copy = copyLink(" &7[copy]", "&7Copy this recap as text (for Discord or a bug report)", RecapText.plainText(r, v.hearts));
+        if (copy != null) cb.append(copy);
         return cb.create();
     }
 }

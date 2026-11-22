@@ -9,6 +9,8 @@ import java.util.Locale;
  * Turns a recap into one string and back. The server sends this string to the client in a single packet, so the
  * network code is the same tiny "send a String" on every loader and version.
  * Format: header line "DB1", recap line, then one line per hit; fields separated by tabs, with \t \n \\ escaped.
+ * Since 1.1.0 the recap line has a 5th field: "D" for a death that just happened, "R" for a replay (/deathbreakdown,
+ * history). 1.0.0 readers ignore it, and a missing flag reads as "unknown".
  */
 public final class RecapCodec {
     private RecapCodec() {}
@@ -17,12 +19,40 @@ public final class RecapCodec {
     /** Packets bigger than this are cut (oldest hits first) so a weird modded spam can't build a huge packet. */
     public static final int MAX_CHARS = 30000;
 
-    public static String encode(Recap r) {
+    /** A recap of a death that just happened (the client shows the death summary). */
+    public static String encodeDeath(Recap r) { return encode(r, "D"); }
+
+    /** A recap asked for again (/deathbreakdown, history): the client just opens it. */
+    public static String encodeReplay(Recap r) { return encode(r, "R"); }
+
+    /** 1.0.0 format (no flag). */
+    public static String encode(Recap r) { return encode(r, null); }
+
+    /** true = fresh death, false = replay, null = unknown (sent by Death Breakdown 1.0.0). */
+    public static Boolean isDeath(String s) {
+        try {
+            if (s == null) return null;
+            int a = s.indexOf('\n');
+            int b = s.indexOf('\n', a + 1);
+            if (a < 0) return null;
+            String[] top = s.substring(a + 1, b < 0 ? s.length() : b).split("\t", -1);
+            if (top.length < 5) return null;
+            if ("D".equals(top[4])) return Boolean.TRUE;
+            if ("R".equals(top[4])) return Boolean.FALSE;
+            return null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    static String encode(Recap r, String flag) {
         List<Hit> hits = new ArrayList<Hit>(r.hits);
         while (true) {
             StringBuilder b = new StringBuilder();
             b.append(HEADER).append('\n');
-            b.append(esc(r.victim)).append('\t').append(esc(r.deathMessage)).append('\t').append(r.timeMs).append('\t').append(r.windowMs).append('\n');
+            b.append(esc(r.victim)).append('\t').append(esc(r.deathMessage)).append('\t').append(r.timeMs).append('\t').append(r.windowMs);
+            if (flag != null) b.append('\t').append(flag);
+            b.append('\n');
             for (Hit h : hits) {
                 b.append(h.timeMs).append('\t').append(esc(h.source)).append('\t').append(esc(h.weapon)).append('\t')
                         .append(h.kind.name()).append('\t').append(esc(h.typeId)).append('\t')

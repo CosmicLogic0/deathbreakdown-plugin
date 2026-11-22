@@ -9,6 +9,8 @@ import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -33,35 +35,57 @@ public final class RecapConfig {
     // When
     public boolean openOnDeath = true;    // open the recap screen automatically on the death screen
     public boolean chatSummary = true;    // one-line summary in chat after death
+    // Added in 1.1.0 (old files get these defaults written in)
+    public boolean showTip = true;        // one short tip under the summary ("Lava did 89% of the damage.")
+    public int historySize = 5;           // recaps kept per player (1-20), browse with < > in the screen
+    public boolean saveHistory = true;    // keep them in the world folder so they survive restarts
+
+    /** What was wrong with the file when it was loaded (empty if nothing). Shown in the log and by /deathbreakdown reload. */
+    public final List<String> problems = new ArrayList<String>();
 
     public long windowMs() { return windowSeconds * 1000L; }
 
     public static RecapConfig load(File file) {
         RecapConfig c = new RecapConfig();
         Properties p = new Properties();
+        if (file.isDirectory()) {
+            c.problems.add(file.getName() + " is a folder, not a file: using the defaults");
+            return c;
+        }
         if (file.isFile()) {
             Reader r = null;
             try {
                 r = new InputStreamReader(new FileInputStream(file), UTF8);
                 p.load(r);
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                c.problems.add("couldn't read " + file.getName() + " (" + e.getMessage() + "): using the defaults");
+            } catch (IllegalArgumentException e) {
+                c.problems.add(file.getName() + " has a broken line (" + e.getMessage() + "): using the defaults for it");
             } finally {
                 if (r != null) try { r.close(); } catch (IOException ignored) {}
             }
         }
-        c.windowSeconds = clampInt(p.getProperty("windowSeconds"), c.windowSeconds, 1, 60);
-        c.showSource = bool(p.getProperty("showSource"), c.showSource);
-        c.showType = bool(p.getProperty("showType"), c.showType);
-        c.showDamage = bool(p.getProperty("showDamage"), c.showDamage);
-        c.showArmor = bool(p.getProperty("showArmor"), c.showArmor);
-        c.showEnchants = bool(p.getProperty("showEnchants"), c.showEnchants);
-        c.showOther = bool(p.getProperty("showOther"), c.showOther);
-        c.showHealthLeft = bool(p.getProperty("showHealthLeft"), c.showHealthLeft);
-        c.showTime = bool(p.getProperty("showTime"), c.showTime);
-        c.hearts = bool(p.getProperty("hearts"), c.hearts);
-        c.openOnDeath = bool(p.getProperty("openOnDeath"), c.openOnDeath);
-        c.chatSummary = bool(p.getProperty("chatSummary"), c.chatSummary);
-        try { c.save(file); } catch (IOException ignored) {}
+        c.windowSeconds = c.clampInt(p, "windowSeconds", c.windowSeconds, 1, 60);
+        c.showSource = c.bool(p, "showSource", c.showSource);
+        c.showType = c.bool(p, "showType", c.showType);
+        c.showDamage = c.bool(p, "showDamage", c.showDamage);
+        c.showArmor = c.bool(p, "showArmor", c.showArmor);
+        c.showEnchants = c.bool(p, "showEnchants", c.showEnchants);
+        c.showOther = c.bool(p, "showOther", c.showOther);
+        c.showHealthLeft = c.bool(p, "showHealthLeft", c.showHealthLeft);
+        c.showTime = c.bool(p, "showTime", c.showTime);
+        c.hearts = c.bool(p, "hearts", c.hearts);
+        c.openOnDeath = c.bool(p, "openOnDeath", c.openOnDeath);
+        c.chatSummary = c.bool(p, "chatSummary", c.chatSummary);
+        c.showTip = c.bool(p, "showTip", c.showTip);
+        c.historySize = c.clampInt(p, "historySize", c.historySize, 1, 20);
+        c.saveHistory = c.bool(p, "saveHistory", c.saveHistory);
+        if (!c.showTime && !c.showSource && !c.showType && !c.showDamage && !c.showArmor && !c.showEnchants
+                && !c.showOther && !c.showHealthLeft) {
+            c.problems.add("every column was turned off: showing \"Hit by\" so the recap isn't empty");
+            c.showSource = true;
+        }
+        try { c.save(file); } catch (IOException e) { c.problems.add("couldn't save " + file.getName() + ": " + e.getMessage()); }
         return c;
     }
 
@@ -89,6 +113,12 @@ public final class RecapConfig {
             w.write("openOnDeath=" + openOnDeath + "\n");
             w.write("# Post a one-line summary in chat when you die\n");
             w.write("chatSummary=" + chatSummary + "\n");
+            w.write("# Show one short tip under the summary, e.g. \"Lava did 89% of the damage.\"\n");
+            w.write("showTip=" + showTip + "\n\n");
+            w.write("# How many of your last deaths to keep (1-20). Browse them with < and > in the recap screen.\n");
+            w.write("historySize=" + historySize + "\n");
+            w.write("# Keep them in the world folder so they survive leaving and restarting\n");
+            w.write("saveHistory=" + saveHistory + "\n");
         } finally {
             w.close();
         }
@@ -97,8 +127,8 @@ public final class RecapConfig {
     static boolean bool(String v, boolean def) {
         if (v == null) return def;
         v = v.trim();
-        if (v.equalsIgnoreCase("true")) return true;
-        if (v.equalsIgnoreCase("false")) return false;
+        if (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("yes") || v.equals("1") || v.equalsIgnoreCase("on")) return true;
+        if (v.equalsIgnoreCase("false") || v.equalsIgnoreCase("no") || v.equals("0") || v.equalsIgnoreCase("off")) return false;
         return def;
     }
 
@@ -110,5 +140,34 @@ public final class RecapConfig {
         } catch (NumberFormatException e) {
             return def;
         }
+    }
+
+    private boolean bool(Properties p, String key, boolean def) {
+        String v = p.getProperty(key);
+        boolean out = bool(v, def);
+        if (v != null && !isBoolWord(v)) {
+            problems.add(key + "=" + v.trim() + " isn't true or false: using " + def);
+        }
+        return out;
+    }
+
+    private static boolean isBoolWord(String v) {
+        v = v.trim().toLowerCase(java.util.Locale.ROOT);
+        return v.equals("true") || v.equals("false") || v.equals("yes") || v.equals("no") || v.equals("1") || v.equals("0")
+                || v.equals("on") || v.equals("off");
+    }
+
+    private int clampInt(Properties p, String key, int def, int lo, int hi) {
+        String v = p.getProperty(key);
+        int out = clampInt(v, def, lo, hi);
+        if (v != null) {
+            try {
+                int i = Integer.parseInt(v.trim());
+                if (i != out) problems.add(key + "=" + i + " is outside " + lo + "-" + hi + ": using " + out);
+            } catch (NumberFormatException e) {
+                problems.add(key + "=" + v.trim() + " isn't a number: using " + def);
+            }
+        }
+        return out;
     }
 }

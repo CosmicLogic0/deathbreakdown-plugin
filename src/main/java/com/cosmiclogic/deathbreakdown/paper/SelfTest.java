@@ -52,6 +52,43 @@ final class SelfTest {
             try { org.bukkit.entity.Player.class.getMethod("openBook", ItemStack.class); canOpen = true; } catch (NoSuchMethodException e) { canOpen = false; }
             report.append(canOpen ? "book opens directly" : "no openBook (chat lines instead)").append(';');
 
+            // 1.1.0: capped hover, tip, history saved in the plugin folder, broken config values, copy link
+            java.util.List<Hit> many = new java.util.ArrayList<Hit>();
+            for (int i = 0; i < 30; i++) many.add(new Hit(now - 3000 + i * 100, "Bee", "", Hit.Kind.MOB, "ENTITY_ATTACK", 1, 0, 0, 0, 0, 0, 1, 20 - i * 0.5F, i == 29));
+            Recap swarm = new Recap("Tester", "Tester was stung to death", now, 10_000, many);
+            int lines = RecapChat.hoverText(swarm, plugin.view).split("\n").length;
+            check(lines < 60, "hover fits on screen (" + lines + " lines)");
+            check(!RecapText.tip(r).isEmpty(), "tip for the test death");
+            report.append("hover capped (").append(lines).append(" lines); ");
+
+            HitLog hist = new HitLog(10_000L);
+            hist.setHistorySize(3);
+            for (int i = 0; i < 5; i++) {
+                hist.add(id, new Hit(now + i, "Lava", "", Hit.Kind.ENVIRONMENT, "LAVA", 4, 0, 0, 0, 0, 0, 4, 0, false));
+                hist.onDeath(id, "Tester", "death " + i, now + i, null);
+            }
+            java.util.List<Recap> h = hist.history(id);
+            check(h.size() == 3 && "death 4".equals(h.get(2).deathMessage), "history keeps the newest 3");
+            java.io.File dir = new java.io.File(plugin.getDataFolder(), "selftest-history");
+            UUID tmp = UUID.randomUUID();
+            check(com.cosmiclogic.deathbreakdown.core.RecapStore.save(dir, tmp, h), "history saved");
+            check(com.cosmiclogic.deathbreakdown.core.RecapStore.load(dir, tmp).size() == 3, "history loaded back");
+            check(com.cosmiclogic.deathbreakdown.core.RecapStore.fileFor(dir, tmp).delete() && dir.delete(), "test files removed");
+            report.append("history + save ok; ");
+
+            org.bukkit.configuration.file.YamlConfiguration bad = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(
+                    new java.io.StringReader("window-seconds: banana\nhearts: maybe\nhistory-size: 999\n"));
+            plugin.problems.clear();
+            check(plugin.intSetting(bad, "window-seconds", 10, 1, 60) == 10, "bad number falls back to 10");
+            check(plugin.boolSetting(bad, "hearts", true), "bad true/false falls back");
+            check(plugin.intSetting(bad, "history-size", 5, 1, 20) == 20, "clamped");
+            check(plugin.problems.size() == 3, "3 problems: " + plugin.problems);
+            plugin.problems.clear();
+            report.append("broken config ok; ");
+
+            boolean copy = RecapChat.copyLink("x", "y", "z") != null;
+            report.append(copy ? "copy link ok; " : "no copy links before 1.15 (text instead); ");
+
             plugin.getLogger().info("Death Breakdown selftest PASS: " + report);
             if (!(out instanceof org.bukkit.command.ConsoleCommandSender)) out.sendMessage("Death Breakdown selftest PASS: " + report);
         } catch (Throwable t) {

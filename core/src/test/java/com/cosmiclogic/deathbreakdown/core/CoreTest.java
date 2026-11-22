@@ -1,5 +1,7 @@
 package com.cosmiclogic.deathbreakdown.core;
 
+import java.util.ArrayList;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
@@ -130,7 +132,9 @@ public final class CoreTest {
         yes(log.last(p) != null, "last recap kept for the reopen key");
         eq(0, log.trackedPlayers());                  // live hits cleared after death
         log.forget(p);
-        yes(log.last(p) == null, "forget clears everything");
+        yes(log.last(p) != null, "logging out keeps the history (1.1.0: /deathbreakdown works after a relog)");
+        log.forgetAll(p);
+        yes(log.last(p) == null, "forgetAll clears everything");
     }
 
     public static void testHitCap() {
@@ -255,5 +259,202 @@ public final class CoreTest {
         String text = new String(Files.readAllBytes(f.toPath()), "UTF-8");
         yes(text.contains("chatSummary=true"), "missing keys are added back");
         eq(RecapText.columns(c2).contains(RecapText.Col.ARMOR), false);
+    }
+
+    // ---------------------------------------------------------------- 1.1.0
+
+    public static void testCodecDeathFlag() {
+        Recap r = sampleRecap();
+        eq(Boolean.TRUE, RecapCodec.isDeath(RecapCodec.encodeDeath(r)));
+        eq(Boolean.FALSE, RecapCodec.isDeath(RecapCodec.encodeReplay(r)));
+        eq(null, RecapCodec.isDeath(RecapCodec.encode(r)));        // 1.0.0 servers send no flag
+        eq(null, RecapCodec.isDeath("junk"));
+        eq(null, RecapCodec.isDeath(null));
+        Recap back = RecapCodec.decode(RecapCodec.encodeDeath(r)); // the flag doesn't change the recap
+        eq(r.hits.size(), back.hits.size());
+        eq(r.deathMessage, back.deathMessage);
+    }
+
+    public static void testOldClientsReadNewPackets() {
+        // A 1.0.0 client reads top[0..3] and ignores the rest: check the flagged line still splits the same way.
+        String s = RecapCodec.encodeDeath(sampleRecap());
+        String[] top = s.split("\n", -1)[1].split("\t", -1);
+        eq(5, top.length);
+        eq("Steve", top[0]);
+        Long.parseLong(top[2]);
+        Long.parseLong(top[3]);
+    }
+
+    public static void testHistoryKeepsNewestAndCaps() {
+        HitLog log = new HitLog(10_000);
+        log.setHistorySize(3);
+        UUID p = UUID.randomUUID();
+        for (int i = 1; i <= 5; i++) {
+            log.add(p, hit(i * 1000L, "Zombie" + i, 2, 2));
+            log.onDeath(p, "Steve", "death " + i, i * 1000L, null);
+        }
+        List<Recap> h = log.history(p);
+        eq(3, h.size());
+        eq("death 3", h.get(0).deathMessage);
+        eq("death 5", h.get(2).deathMessage);
+        eq("death 5", log.last(p).deathMessage);
+        log.setHistorySize(1);
+        eq(1, log.history(p).size());
+        eq("death 5", log.last(p).deathMessage);
+        eq(0, log.history(UUID.randomUUID()).size());
+    }
+
+    public static void testHistoryRestoreMerges() {
+        HitLog log = new HitLog(10_000);
+        UUID p = UUID.randomUUID();
+        log.add(p, hit(9000, "Creeper", 10, 10));
+        log.onDeath(p, "Steve", "new", 9000, null);
+        List<Recap> saved = new ArrayList<Recap>();
+        saved.add(new Recap("Steve", "old1", 1000, 10_000, new ArrayList<Hit>()));
+        saved.add(new Recap("Steve", "old2", 2000, 10_000, new ArrayList<Hit>()));
+        log.restore(p, saved);
+        List<Recap> h = log.history(p);
+        eq(3, h.size());
+        eq("old1", h.get(0).deathMessage);
+        eq("new", h.get(2).deathMessage);       // the newer in-memory death stays newest
+        log.restore(p, saved);                   // restoring twice doesn't duplicate
+        eq(3, log.history(p).size());
+    }
+
+    public static void testStoreRoundTripAndJunk() throws Exception {
+        File dir = new File("build/coretest/store-" + System.nanoTime());
+        UUID p = UUID.randomUUID();
+        List<Recap> list = new ArrayList<Recap>();
+        list.add(sampleRecap());
+        list.add(new Recap("Steve", "line\nbreak\tand tab \\ slash", 5, 10_000, new ArrayList<Hit>()));
+        yes(RecapStore.save(dir, p, list), "saved");
+        List<Recap> back = RecapStore.load(dir, p);
+        eq(2, back.size());
+        eq("line\nbreak\tand tab \\ slash", back.get(1).deathMessage);
+        eq(list.get(0).hits.size(), back.get(0).hits.size());
+        yes(!new File(dir, p + ".tmp").exists(), "no temp file left behind");
+        eq(0, RecapStore.load(dir, UUID.randomUUID()).size());    // missing file
+        java.io.FileOutputStream o = new java.io.FileOutputStream(RecapStore.fileFor(dir, p));
+        o.write("DB1\nnot\tvalid\nDB1\n\u0000\u0001garbage".getBytes("UTF-8"));
+        o.close();
+        eq(0, RecapStore.load(dir, p).size());                     // junk file: nothing, no exception
+        byte[] big = new byte[RecapStore.MAX_FILE_BYTES + 10];
+        o = new java.io.FileOutputStream(RecapStore.fileFor(dir, p));
+        o.write(big);
+        o.close();
+        eq(0, RecapStore.load(dir, p).size());                     // too big: ignored
+    }
+
+    public static void testTips() {
+        List<Hit> hits = new ArrayList<Hit>();
+        hits.add(new Hit(1000, "Lava", "", Hit.Kind.ENVIRONMENT, "lava", 8, 0, 0, 0, 0, 0, 8, 12, false));
+        hits.add(new Hit(2000, "Lava", "", Hit.Kind.ENVIRONMENT, "lava", 8, 0, 0, 0, 0, 0, 8, 4, false));
+        hits.add(new Hit(3000, "Zombie", "", Hit.Kind.MOB, "mob", 4, 0, 0, 0, 0, 0, 4, 0, true));
+        eq("Lava did 80% of the damage.", RecapText.tip(new Recap("Steve", "", 3000, 10_000, hits)));
+        List<Hit> geared = new ArrayList<Hit>();
+        geared.add(new Hit(1000, "Skeleton", "Bow", Hit.Kind.PROJECTILE, "arrow", 10, 4, 2, 0, 0, 0, 4, 0, true));
+        eq("Your gear stopped 60% of the damage.", RecapText.tip(new Recap("Steve", "", 1000, 10_000, geared)));
+        List<Hit> plain = new ArrayList<Hit>();
+        plain.add(new Hit(1000, "Spider", "", Hit.Kind.MOB, "mob", 2, 0, 0, 0, 0, 0, 2, 0, true));
+        eq("", RecapText.tip(new Recap("Steve", "", 1000, 10_000, plain)));
+        eq("", RecapText.tip(new Recap("Steve", "", 1000, 10_000, new ArrayList<Hit>())));
+    }
+
+    public static void testHoverLinesCapped() {
+        List<Hit> hits = new ArrayList<Hit>();
+        for (int i = 0; i < 12; i++) hits.add(new Hit(i * 100L, "Bee", "", Hit.Kind.MOB, "sting", 1, 0, 0, 0, 0, 0, 1, 20 - i, i == 11));
+        Recap r = new Recap("Steve", "Steve was stung", 1200, 10_000, hits);
+        List<String> lines = RecapText.hoverLines(r, true, 4);
+        eq("(8 earlier hits in the full recap)", lines.get(0));
+        int finals = 0;
+        for (String l : lines) if (l.startsWith("FINAL BLOW")) finals++;
+        eq(1, finals);
+        yes(lines.size() < 30, "fits on screen: " + lines.size());
+        eq(RecapText.hoverLines(r, true, 50).size() > lines.size(), true);
+    }
+
+    public static void testPlainText() {
+        String t = RecapText.plainText(sampleRecap(), true);
+        yes(t.startsWith("Death Breakdown: "), t);
+        yes(t.contains("> -0.0s"), "final blow marked: " + t);
+        yes(t.split("\n").length >= 3, t);
+    }
+
+    public static void testAgo() {
+        eq("just now", RecapText.ago(1000, 5000));
+        eq("30 s ago", RecapText.ago(0, 30_000));
+        eq("2 min ago", RecapText.ago(0, 150_000));
+        eq("3 h ago", RecapText.ago(0, 3 * 3600_000L + 5));
+        eq("2 d ago", RecapText.ago(0, 2 * 86_400_000L));
+        eq("just now", RecapText.ago(5000, 1000));               // clock went backwards
+    }
+
+    public static void testBrokenConfigFallsBack() throws Exception {
+        File f = new File("build/coretest/broken-" + System.nanoTime() + ".properties");
+        java.io.FileOutputStream o = new java.io.FileOutputStream(f);
+        o.write(("windowSeconds=banana\nhearts=maybe\nopenOnDeath=no\nhistorySize=999\nshowTip=OFF\n"
+                + "this line has no equals sign\n\u00ff\u00fe\n").getBytes("ISO-8859-1"));
+        o.close();
+        RecapConfig c = RecapConfig.load(f);
+        eq(10, c.windowSeconds);            // bad number: default
+        eq(true, c.hearts);                 // bad bool: default
+        eq(false, c.openOnDeath);           // "no" is understood
+        eq(20, c.historySize);              // clamped
+        eq(false, c.showTip);               // "OFF" is understood
+        yes(c.problems.size() >= 3, "problems listed: " + c.problems);
+        RecapConfig again = RecapConfig.load(f); // the file was rewritten clean
+        eq(0, again.problems.size());
+        eq(20, again.historySize);
+    }
+
+    public static void testBadEscapeInConfig() throws Exception {
+        File f = new File("build/coretest/escape-" + System.nanoTime() + ".properties");
+        java.io.FileOutputStream o = new java.io.FileOutputStream(f);
+        o.write("windowSeconds=20\nhearts=\\uZZZZ\n".getBytes("UTF-8"));
+        o.close();
+        RecapConfig c = RecapConfig.load(f);  // Properties throws IllegalArgumentException on a bad u-escape
+        yes(!c.problems.isEmpty(), "broken line reported");
+        eq(true, c.hearts);
+    }
+
+    public static void testConfigFolderInsteadOfFile() {
+        File dir = new File("build/coretest/dir-" + System.nanoTime() + ".properties");
+        yes(dir.mkdirs(), "made folder");
+        RecapConfig c = RecapConfig.load(dir);
+        eq(10, c.windowSeconds);
+        yes(!c.problems.isEmpty(), "folder reported");
+    }
+
+    public static void testAllColumnsOffKeepsOne() throws Exception {
+        File f = new File("build/coretest/cols-" + System.nanoTime() + ".properties");
+        java.io.FileOutputStream o = new java.io.FileOutputStream(f);
+        o.write(("showTime=false\nshowSource=false\nshowType=false\nshowDamage=false\nshowArmor=false\n"
+                + "showEnchants=false\nshowOther=false\nshowHealthLeft=false\n").getBytes("UTF-8"));
+        o.close();
+        RecapConfig c = RecapConfig.load(f);
+        eq(1, RecapText.columns(c).size());
+        eq(RecapText.Col.SOURCE, RecapText.columns(c).get(0));
+    }
+
+    public static void testOldConfigKeepsValuesAndGetsNewKeys() throws Exception {
+        File f = new File("build/coretest/old-" + System.nanoTime() + ".properties");
+        java.io.FileOutputStream o = new java.io.FileOutputStream(f);
+        o.write("# 1.0.0 file\nwindowSeconds=15\nhearts=false\nopenOnDeath=false\n".getBytes("UTF-8"));
+        o.close();
+        RecapConfig c = RecapConfig.load(f);
+        eq(15, c.windowSeconds);
+        eq(false, c.hearts);
+        eq(false, c.openOnDeath);
+        eq(5, c.historySize);
+        String text = new String(java.nio.file.Files.readAllBytes(f.toPath()), "UTF-8");
+        yes(text.contains("historySize=5") && text.contains("showTip=true") && text.contains("windowSeconds=15"), text);
+        eq(0, c.problems.size());
+    }
+
+    static Recap sampleRecap() {
+        List<Hit> hits = new ArrayList<Hit>();
+        hits.add(new Hit(1000, "Skeleton", "Bow", Hit.Kind.PROJECTILE, "arrow", 4, 1.5F, 0.3F, 0, 0, 0, 2.2F, 17.8F, false));
+        hits.add(new Hit(2000, "Zombie", "Iron Sword", Hit.Kind.MOB, "mob", 9, 3, 1, 0, 0, 0, 5, 0, true));
+        return new Recap("Steve", "Steve was slain by Zombie", 2000, 10_000, hits);
     }
 }

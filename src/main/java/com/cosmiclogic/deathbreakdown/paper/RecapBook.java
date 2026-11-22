@@ -61,6 +61,8 @@ final class RecapBook {
         if (v.showArmor) first.append("§0Armor: §8-").append(RecapText.amount(r.totalArmor(), v.hearts)).append('\n');
         if (v.showEnchants) first.append("§0Enchants: §5-").append(RecapText.amount(r.totalEnchants(), v.hearts)).append('\n');
         if (v.showOther && r.totalOther() > 0.005F) first.append("§0Other: §1-").append(RecapText.amount(r.totalOther(), v.hearts)).append('\n');
+        String tip = v.showTip ? RecapText.tip(r) : "";
+        if (!tip.isEmpty()) first.append("\n§6").append(cut(tip, 60));
         pages.add(first.toString());
 
         int n = 1;

@@ -8,8 +8,8 @@ depend: [LogicLib]
 description: See exactly what killed you. Every hit from your last 10 seconds, in chat or a book.
 commands:
   deathbreakdown:
-    description: Show your last death recap. /deathbreakdown [chat|book|reload]
-    usage: /<command> [chat|book|reload]
+    description: Your last death recap. /deathbreakdown help lists everything.
+    usage: /<command> [help|history|show <n>|chat|book|copy|player <name>|reload]
     aliases: [db]
 permissions:
   deathbreakdown.use:
@@ -17,4 +17,7 @@ permissions:
     default: true
   deathbreakdown.reload:
     description: Reload config.yml
+    default: op
+  deathbreakdown.others:
+    description: See another player's last recap with /deathbreakdown player <name>
     default: op

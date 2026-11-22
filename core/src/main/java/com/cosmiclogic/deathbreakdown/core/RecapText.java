@@ -119,6 +119,82 @@ public final class RecapText {
         return b.toString();
     }
 
+    /**
+     * One short tip about the death, or "" if nothing stands out, e.g. "Lava did 89% of the damage." or
+     * "Your gear stopped 45% of the damage."
+     */
+    public static String tip(Recap r) {
+        float dealt = r.totalDealt(), raw = r.totalRaw();
+        if (r.hits.size() >= 2 && dealt > 0.01F) {
+            java.util.Map<String, Float> sum = new java.util.LinkedHashMap<String, Float>();
+            for (Hit h : r.hits) {
+                Float v = sum.get(h.source);
+                sum.put(h.source, (v == null ? 0 : v) + h.dealt);
+            }
+            if (sum.size() >= 2) {
+                String best = r.biggestSource();
+                int pct = Math.round(100F * sum.get(best) / dealt);
+                if (pct >= 50 && pct < 100) return best + " did " + pct + "% of the damage.";
+            }
+        }
+        float gear = r.totalArmor() + r.totalEnchants();
+        if (raw > 0.01F && gear / raw >= 0.25F) {
+            return "Your gear stopped " + Math.round(100F * gear / raw) + "% of the damage.";
+        }
+        if (r.hits.size() == 1 && r.finalBlow() != null && r.finalBlow().healthAfter <= 0.01F
+                && r.finalBlow().dealt > 0.01F && r.finalBlow().dealt == r.totalDealt() && raw >= 20F) {
+            return "One hit: " + amount(raw, true) + " in one go.";
+        }
+        return "";
+    }
+
+    /**
+     * Lines for a chat hover: the death message, then the details of the newest {@code maxHits} hits (the final blow
+     * last). Older hits are summed up in one line, so the tooltip always fits on screen.
+     */
+    public static List<String> hoverLines(Recap r, boolean hearts, int maxHits) {
+        List<String> out = new ArrayList<String>();
+        int skip = Math.max(0, r.hits.size() - Math.max(1, maxHits));
+        if (skip > 0) out.add("(" + skip + " earlier " + (skip == 1 ? "hit" : "hits") + " in the full recap)");
+        for (int i = skip; i < r.hits.size(); i++) {
+            if (!out.isEmpty()) out.add("");
+            out.addAll(details(r.hits.get(i), r, hearts));
+        }
+        return out;
+    }
+
+    /** The whole recap as plain text, for copying into Discord or a bug report. */
+    public static String plainText(Recap r, boolean hearts) {
+        StringBuilder b = new StringBuilder();
+        b.append("Death Breakdown: ").append(r.deathMessage.isEmpty() ? r.victim + " died" : r.deathMessage).append('\n');
+        b.append(summary(r, hearts)).append('\n');
+        String tip = tip(r);
+        if (!tip.isEmpty()) b.append(tip).append('\n');
+        for (Hit h : r.hits) {
+            b.append(h.finalBlow ? "> " : "  ").append(time(h, r)).append("  ").append(source(h))
+                    .append("  [").append(DamageLabels.label(h.typeId)).append("]  ").append(amount(h.raw, hearts));
+            if (h.armor > 0.005F) b.append("  armor -").append(amount(h.armor, hearts));
+            if (h.enchants > 0.005F) b.append("  enchants -").append(amount(h.enchants, hearts));
+            float o = h.effects + h.absorbed + h.blocked;
+            if (o > 0.005F) b.append("  other -").append(amount(o, hearts));
+            b.append("  left ").append(amount(Math.max(0, h.healthAfter), hearts)).append('\n');
+        }
+        return b.toString();
+    }
+
+    /** Explains the columns under the table; split into as many lines as the screen needs. */
+    public static final String LEGEND = "Armor = armor & toughness   Enchants = Protection-type   Other = Resistance, absorption, shield";
+
+    /** "2 min ago", "just now", for the history list. */
+    public static String ago(long thenMs, long nowMs) {
+        long s = Math.max(0, (nowMs - thenMs) / 1000);
+        if (s < 10) return "just now";
+        if (s < 60) return s + " s ago";
+        if (s < 3600) return (s / 60) + " min ago";
+        if (s < 86400) return (s / 3600) + " h ago";
+        return (s / 86400) + " d ago";
+    }
+
     /** Detail lines for a hover tooltip or a book page. */
     public static List<String> details(Hit h, Recap r, boolean hearts) {
         List<String> out = new ArrayList<String>();

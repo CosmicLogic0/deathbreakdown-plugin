@@ -18,3 +18,12 @@ show:
   enchants: true
   other: true
   health-left: true
+
+# Show one short tip under the summary, e.g. "Lava did 89% of the damage." (added in 1.1.0)
+show-tip: true
+
+# How many of each player's last deaths to keep (1-20). /db history lists them. (added in 1.1.0)
+history-size: 5
+
+# Keep them in plugins/DeathBreakdown/history so they survive leaving and restarts (added in 1.1.0)
+save-history: true
