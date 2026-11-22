@@ -46,7 +46,13 @@ final class SelfTest {
 
             ItemStack book = RecapBook.build(r, plugin.view);
             BookMeta meta = (BookMeta) book.getItemMeta();
-            check(meta.getPageCount() == 1 + r.hits.size(), "book pages = " + meta.getPageCount());
+            int extra = meta.getPageCount() - r.hits.size();
+            check(extra == 1 || extra == 2, "book pages = " + meta.getPageCount());
+            // Every page fits (14 lines): the 1.1.0 tip line used to fall off the bottom of page 1.
+            for (String page : RecapBook.pages(r, plugin.view)) check(RecapBook.lines(page) <= RecapBook.PAGE_LINES,
+                    "page fits: " + RecapBook.lines(page) + " lines: " + page.replace('\n', '/'));
+            check(RecapBook.lines("§6§lDeath Breakdown§r") == 1 && RecapBook.lines("Offline was shot by Skeleton") == 2,
+                    "line estimate");
             report.append("book ").append(meta.getPageCount()).append(" pages; ");
             boolean canOpen;
             try { org.bukkit.entity.Player.class.getMethod("openBook", ItemStack.class); canOpen = true; } catch (NoSuchMethodException e) { canOpen = false; }

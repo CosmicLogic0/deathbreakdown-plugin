@@ -49,21 +49,22 @@ final class RecapBook {
         return book;
     }
 
+    /** A written book page shows 14 lines of about 114 pixels. */
+    static final int PAGE_LINES = 14, PAGE_WIDTH = 114;
+
     static List<String> pages(Recap r, RecapConfig v) {
         List<String> pages = new ArrayList<String>();
-        StringBuilder first = new StringBuilder();
-        first.append("§6§lDeath Breakdown§r\n\n");
-        first.append("§8").append(cut(r.deathMessage, 120)).append("§r\n\n");
-        Hit fb = r.finalBlow();
-        if (fb != null) first.append("§0Final blow:\n§4").append(cut(RecapText.source(fb), 40)).append("§r\n\n");
-        first.append("§0Hits: ").append(r.hits.size()).append('\n');
-        first.append("§0Damage: §c").append(RecapText.amount(r.totalRaw(), v.hearts)).append('\n');
-        if (v.showArmor) first.append("§0Armor: §8-").append(RecapText.amount(r.totalArmor(), v.hearts)).append('\n');
-        if (v.showEnchants) first.append("§0Enchants: §5-").append(RecapText.amount(r.totalEnchants(), v.hearts)).append('\n');
-        if (v.showOther && r.totalOther() > 0.005F) first.append("§0Other: §1-").append(RecapText.amount(r.totalOther(), v.hearts)).append('\n');
-        String tip = v.showTip ? RecapText.tip(r) : "";
-        if (!tip.isEmpty()) first.append("\n§6").append(cut(tip, 60));
-        pages.add(first.toString());
+        String tip = v.showTip ? cut(RecapText.tip(r), 60) : "";
+        // Roomy layout first; if the tip would fall off the page, drop the spacer lines; if it still doesn't fit,
+        // the tip gets its own page right after the summary (it used to be cut off at the bottom).
+        String first = summary(r, v, tip, true);
+        if (!tip.isEmpty() && lines(first) > PAGE_LINES) first = summary(r, v, tip, false);
+        if (!tip.isEmpty() && lines(first) > PAGE_LINES) {
+            pages.add(summary(r, v, "", true));
+            pages.add("§6§lTip§r\n\n§0" + tip);
+        } else {
+            pages.add(first);
+        }
 
         int n = 1;
         for (Hit h : r.hits) {
@@ -86,6 +87,51 @@ final class RecapBook {
             n++;
         }
         return pages;
+    }
+
+    static String summary(Recap r, RecapConfig v, String tip, boolean roomy) {
+        StringBuilder first = new StringBuilder();
+        first.append("§6§lDeath Breakdown§r\n").append(roomy ? "\n" : "");
+        first.append("§8").append(cut(r.deathMessage, 120)).append("§r\n").append(roomy ? "\n" : "");
+        Hit fb = r.finalBlow();
+        if (fb != null) first.append("§0Final blow:\n§4").append(cut(RecapText.source(fb), 40)).append("§r\n").append(roomy ? "\n" : "");
+        first.append("§0Hits: ").append(r.hits.size()).append('\n');
+        first.append("§0Damage: §c").append(RecapText.amount(r.totalRaw(), v.hearts)).append('\n');
+        if (v.showArmor) first.append("§0Armor: §8-").append(RecapText.amount(r.totalArmor(), v.hearts)).append('\n');
+        if (v.showEnchants) first.append("§0Enchants: §5-").append(RecapText.amount(r.totalEnchants(), v.hearts)).append('\n');
+        if (v.showOther && r.totalOther() > 0.005F) first.append("§0Other: §1-").append(RecapText.amount(r.totalOther(), v.hearts)).append('\n');
+        if (!tip.isEmpty()) first.append("\n§6").append(tip);
+        return first.toString();
+    }
+
+    /** How many lines a page takes in the book, wrapping words like the game does (close estimate, a bit generous). */
+    static int lines(String page) {
+        int total = 0;
+        for (String line : page.split("\n", -1)) {
+            String text = line.replaceAll("§.", "");
+            boolean bold = line.contains("§l");
+            int rows = 1, x = 0;
+            for (String word : text.split(" ", -1)) {
+                int w = width(word, bold);
+                int need = x == 0 ? w : x + 4 + w;
+                if (need > PAGE_WIDTH && x > 0) { rows++; x = w; } else x = need;
+                while (x > PAGE_WIDTH) { rows++; x -= PAGE_WIDTH; }
+            }
+            total += rows;
+        }
+        return total;
+    }
+
+    private static int width(String word, boolean bold) {
+        int w = 0;
+        for (char c : word.toCharArray()) {
+            if ("il!.,:;|'".indexOf(c) >= 0) w += 2;
+            else if ("tI[] ".indexOf(c) >= 0) w += 4;
+            else if ("fk<>()\"*".indexOf(c) >= 0) w += 5;
+            else w += 6;
+            if (bold) w++;
+        }
+        return w;
     }
 
     private static String cut(String s, int max) {
